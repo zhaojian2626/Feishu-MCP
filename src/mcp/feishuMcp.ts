@@ -4,10 +4,12 @@ import { Logger } from '../utils/logger.js';
 import { registerFeishuTools } from './tools/feishuTools.js';
 import { registerFeishuBlockTools } from './tools/feishuBlockTools.js';
 import { registerFeishuFolderTools } from './tools/feishuFolderTools.js';
+import { registerFeishuSpreadsheetTools } from './tools/feishuSpreadsheetTools.js';
+import { registerFeishuBitableTools } from './tools/feishuBitableTools.js';
 
 const serverInfo = {
   name: "Feishu MCP Server",
-  version: "0.1.7",
+  version: "0.2.0",
 };
 
 const serverOptions = {
@@ -65,5 +67,7 @@ export class FeishuMcp extends McpServer {
     registerFeishuTools(this, this.feishuService);
     registerFeishuBlockTools(this, this.feishuService);
     registerFeishuFolderTools(this, this.feishuService);
+    registerFeishuSpreadsheetTools(this, this.feishuService);
+    registerFeishuBitableTools(this, this.feishuService);
   }
 } 

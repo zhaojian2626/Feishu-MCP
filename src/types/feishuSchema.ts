@@ -344,3 +344,158 @@ export const WhiteboardFillArraySchema = z.array(WhiteboardContentSchema).descri
 
 // 文档标题参数定义
 export const DocumentTitleSchema = z.string().describe('Document title (required). This will be displayed in the Feishu document list and document header.');
+
+// ─────────────────────────────────────────────
+// 多维表格（Bitable）Schema
+// ─────────────────────────────────────────────
+
+// 多维表格 app_token 参数定义
+export const BitableAppTokenSchema = z.string().describe(
+  'Bitable app token or URL (required). Supports the following formats:\n' +
+  '1. Full bitable URL: https://xxx.feishu.cn/base/K2Xqb8Pdia1yDwsGiT2c9Dz1nk5\n' +
+  '2. Combined token from document block (bitable.token): "K2Xqb8Pdia1yDwsGiT2c9Dz1nk5_tblYFJzd1BUV03Pf"\n' +
+  '3. Direct app token: "K2Xqb8Pdia1yDwsGiT2c9Dz1nk5"\n\n' +
+  'IMPORTANT - Embedded bitable (from document blocks with block_type: 18):\n' +
+  'When a bitable is embedded in a document, its bitable.token is formatted as "appToken_tableId".\n' +
+  'Example: "K2Xqb8Pdia1yDwsGiT2c9Dz1nk5_tblYFJzd1BUV03Pf"\n' +
+  '  - appToken = "K2Xqb8Pdia1yDwsGiT2c9Dz1nk5" (part before underscore)\n' +
+  '  - tableId  = "tblYFJzd1BUV03Pf" (part after underscore)\n' +
+  'You can pass the full combined token here; the system will extract appToken automatically.\n' +
+  'For tableId parameter in other tools, use the part after the underscore directly.'
+);
+
+// 数据表 ID 参数定义
+export const BitableTableIdSchema = z.string().describe(
+  'Table ID (required). The unique identifier for a data table within the bitable app.\n' +
+  'Format is like "tblYFJzd1BUV03Pf".\n' +
+  'How to get tableId:\n' +
+  '1. Use get_feishu_bitable_tables tool to list all tables.\n' +
+  '2. For embedded bitable blocks (block_type: 18 in a document), the bitable.token field is\n' +
+  '   formatted as "appToken_tableId" — the tableId is the part AFTER the underscore.\n' +
+  '   Example: from "K2Xqb8Pdia1yDwsGiT2c9Dz1nk5_tblYFJzd1BUV03Pf", tableId = "tblYFJzd1BUV03Pf"'
+);
+
+// 记录 ID 参数定义
+export const BitableRecordIdSchema = z.string().describe(
+  'Record ID (required). The unique identifier for a record (row) in the table.\n' +
+  'Format is like "recXXXXXXXXXX". Obtained from query results.'
+);
+
+// 过滤条件参数定义
+export const BitableFilterSchema = z.string().optional().describe(
+  'Filter formula (optional). Feishu Bitable filter expression.\n' +
+  'Examples:\n' +
+  '- AND(CurrentValue.[姓名]="Alice")\n' +
+  '- OR(CurrentValue.[状态]="进行中",CurrentValue.[状态]="待处理")\n' +
+  '- CurrentValue.[年龄]>18\n' +
+  'Leave empty to return all records.'
+);
+
+// 指定返回字段列表
+export const BitableFieldNamesSchema = z.array(z.string()).optional().describe(
+  'Field names to return (optional). Specify which columns to include in the result.\n' +
+  'Example: ["姓名", "年龄", "状态"]\n' +
+  'Leave empty to return all fields.'
+);
+
+// 视图 ID 参数定义
+export const BitableViewIdSchema = z.string().optional().describe(
+  'View ID (optional). Filter records using a specific view. Leave empty to use the default view.'
+);
+
+// 分页大小参数定义
+export const BitablePageSizeSchema = z.number().optional().default(100).describe(
+  'Page size (optional). Number of records per page. Default is 100, maximum is 500.\n' +
+  'When not specified, all records are automatically fetched (up to 5000).'
+);
+
+// 记录字段键值对定义
+export const BitableFieldsSchema = z.record(z.any()).describe(
+  'Record fields as key-value pairs (required). Keys are field names, values are field values.\n' +
+  'Supported value types depend on the field type:\n' +
+  '- Text field: string\n' +
+  '- Number field: number\n' +
+  '- Single select: string (option name)\n' +
+  '- Multi select: array of strings\n' +
+  '- Date field: timestamp in milliseconds (number)\n' +
+  '- Checkbox: boolean\n' +
+  'Example: {"姓名": "Alice", "年龄": 30, "状态": "进行中"}'
+);
+
+// 批量记录数组定义
+export const BitableRecordsListSchema = z.array(z.record(z.any())).describe(
+  'Array of record field objects for batch creation (required).\n' +
+  'Each item is a key-value map of field names to values.\n' +
+  'Example: [{"姓名":"Alice","年龄":30},{"姓名":"Bob","年龄":25}]'
+);
+
+// ─────────────────────────────────────────────
+// 电子表格（Sheets）Schema
+// ─────────────────────────────────────────────
+
+// 电子表格标题参数定义
+export const SpreadsheetTitleSchema = z.string().describe(
+  'Spreadsheet title (required). The name displayed for the spreadsheet file in Feishu Drive.'
+);
+
+// 电子表格Token参数定义
+export const SpreadsheetTokenSchema = z.string().describe(
+  'Spreadsheet token or URL (required). Supports the following formats:\n' +
+  '1. Standard spreadsheet URL: https://xxx.feishu.cn/sheets/shtXXXXXXXX\n' +
+  '2. Direct spreadsheet token: e.g., "shtcnmBA*****"\n' +
+  'The token uniquely identifies the spreadsheet in Feishu.'
+);
+
+// 单元格范围参数定义
+export const SpreadsheetRangeSchema = z.string().describe(
+  'Cell range (required). Specifies the range of cells to read. Formats:\n' +
+  '1. With sheet name: "SheetName!A1:D10" (e.g., "Sheet1!A1:Z100")\n' +
+  '2. Without sheet name (first sheet): "A1:D10"\n' +
+  '3. Single cell: "A1"\n' +
+  '4. Entire column: "A:A"\n' +
+  '5. Entire row: "1:1"\n' +
+  'Use the get_feishu_spreadsheet_sheets tool to retrieve sheet names first.'
+);
+
+// 多个单元格范围参数定义
+export const SpreadsheetRangesSchema = z.array(z.string()).describe(
+  'Array of cell ranges (required). Each range follows the same format as SpreadsheetRangeSchema.\n' +
+  'Example: ["Sheet1!A1:D10", "Sheet2!B2:F20"]\n' +
+  'Maximum recommended batch size is 100 ranges.'
+);
+
+// 单元格值渲染方式参数定义
+export const ValueRenderOptionSchema = z.string().optional().default('ToString').describe(
+  'Cell value render option (optional). Controls how cell values are returned:\n' +
+  '- "ToString": Returns all values as strings (default)\n' +
+  '- "Formula": Returns formula expressions\n' +
+  '- "FormattedValue": Returns formatted display values\n' +
+  '- "UnformattedValue": Returns raw unformatted values'
+);
+
+// 日期时间渲染方式参数定义
+export const DateTimeRenderOptionSchema = z.string().optional().default('FormattedString').describe(
+  'Date/time render option (optional). Controls how date and time values are returned:\n' +
+  '- "FormattedString": Returns formatted date/time strings (default)\n' +
+  '- "Serial": Returns serial number format'
+);
+
+// 单元格值二维数组定义（用于写入）
+export const SpreadsheetWriteValuesSchema = z.array(
+  z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).describe('One row of cell values.')
+).describe(
+  'Cell values as a 2D array (rows × columns). Each inner array represents one row.\n' +
+  'Supported value types: string, number, boolean, null (empty cell).\n' +
+  'Example: [["Name","Age","City"],["Alice",30,"Beijing"],["Bob",25,"Shanghai"]]'
+);
+
+// 批量写入范围定义
+export const SpreadsheetValueRangesSchema = z.array(
+  z.object({
+    range: SpreadsheetRangeSchema,
+    values: SpreadsheetWriteValuesSchema,
+  })
+).describe(
+  'Array of range-value pairs for batch writing.\n' +
+  'Example: [{"range":"Sheet1!A1:C2","values":[["A","B","C"],[1,2,3]]},{"range":"Sheet2!A1:B1","values":[["X","Y"]]}]'
+);

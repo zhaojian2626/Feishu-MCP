@@ -1632,6 +1632,503 @@ export class FeishuApiService extends BaseApiService {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // 多维表格（Bitable）API
+  // ─────────────────────────────────────────────
+
+  /**
+   * 从 bitable token 或 URL 中提取 app_token
+   * token 格式示例：K2Xqb8Pdia1yDwsGiT2c9Dz1nk5_tblYFJzd1BUV03Pf
+   * 或独立链接：https://xxx.feishu.cn/base/K2Xqb8Pdia1yDwsGiT2c9Dz1nk5
+   */
+  private normalizeBitableAppToken(tokenOrUrl: string): string {
+    if (!tokenOrUrl) throw new Error('多维表格 token 不能为空');
+    // 从 URL 中提取
+    const urlMatch = tokenOrUrl.match(/\/base\/([a-zA-Z0-9]+)/);
+    if (urlMatch) return urlMatch[1];
+    // 形如 appToken_tableId，取下划线前部分
+    const underscoreIdx = tokenOrUrl.indexOf('_');
+    if (underscoreIdx > 0) return tokenOrUrl.substring(0, underscoreIdx);
+    return tokenOrUrl.trim();
+  }
+
+  /**
+   * 获取多维表格应用元数据
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   */
+  public async getBitableAppInfo(appTokenOrUrl: string): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}`;
+      const response = await this.get(endpoint);
+      Logger.info(`获取多维表格信息成功，app_token: ${appToken}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '获取多维表格信息失败');
+    }
+  }
+
+  /**
+   * 获取多维表格内所有数据表列表
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   */
+  public async getBitableTables(appTokenOrUrl: string): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables`;
+      let pageToken = '';
+      let allTables: any[] = [];
+      let page = 0;
+      do {
+        if (++page > 50) break; // 最多翻 50 页防止死循环
+        const params: any = { page_size: 100 };
+        if (pageToken) params.page_token = pageToken;
+        const response = await this.get(endpoint, params);
+        allTables = [...allTables, ...(response.items || [])];
+        pageToken = response.page_token || '';
+      } while (pageToken);
+      Logger.info(`获取数据表列表成功，共 ${allTables.length} 个表`);
+      return { items: allTables, total: allTables.length };
+    } catch (error) {
+      this.handleApiError(error, '获取数据表列表失败');
+    }
+  }
+
+  /**
+   * 获取数据表的字段列表（列定义）
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   */
+  public async getBitableFields(appTokenOrUrl: string, tableId: string): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/fields`;
+      let pageToken = '';
+      let allFields: any[] = [];
+      let page = 0;
+      do {
+        if (++page > 50) break; // 最多翻 50 页防止死循环
+        const params: any = { page_size: 100 };
+        if (pageToken) params.page_token = pageToken;
+        const response = await this.get(endpoint, params);
+        allFields = [...allFields, ...(response.items || [])];
+        pageToken = response.page_token || '';
+      } while (pageToken);
+      Logger.info(`获取字段列表成功，共 ${allFields.length} 个字段`);
+      return { items: allFields, total: allFields.length };
+    } catch (error) {
+      this.handleApiError(error, '获取字段列表失败');
+    }
+  }
+
+  /**
+   * 查询数据表记录（支持过滤、排序、分页）
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   * @param options 查询选项
+   */
+  public async getBitableRecords(
+    appTokenOrUrl: string,
+    tableId: string,
+    options: {
+      filter?: string;
+      sort?: string[];
+      fieldNames?: string[];
+      pageSize?: number;
+      pageToken?: string;
+      viewId?: string;
+    } = {}
+  ): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/records`;
+      const params: any = { page_size: options.pageSize || 100 };
+      if (options.filter) params.filter = options.filter;
+      if (options.viewId) params.view_id = options.viewId;
+      if (options.pageToken) params.page_token = options.pageToken;
+      if (options.fieldNames?.length) params.field_names = JSON.stringify(options.fieldNames);
+      if (options.sort?.length) params.sort = JSON.stringify(options.sort);
+
+      // 如果没有指定 pageToken，自动翻页获取所有记录（上限 5000 条防止超时）
+      if (!options.pageToken) {
+        let allRecords: any[] = [];
+        let currentPageToken = '';
+        let page = 0;
+        do {
+          if (++page > 100) break; // 最多翻 100 页防止死循环
+          if (currentPageToken) params.page_token = currentPageToken;
+          const response = await this.get(endpoint, { ...params });
+          allRecords = [...allRecords, ...(response.items || [])];
+          currentPageToken = response.page_token || '';
+          if (allRecords.length >= 5000) break;
+        } while (currentPageToken);
+        Logger.info(`查询记录成功，共 ${allRecords.length} 条`);
+        return { items: allRecords, total: allRecords.length };
+      }
+
+      const response = await this.get(endpoint, params);
+      Logger.info(`查询记录成功，本页 ${response.items?.length || 0} 条`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '查询多维表格记录失败');
+    }
+  }
+
+  /**
+   * 新增记录到多维表格
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   * @param fields 字段键值对，key 为字段名，value 为字段值
+   */
+  public async createBitableRecord(
+    appTokenOrUrl: string,
+    tableId: string,
+    fields: Record<string, any>
+  ): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/records`;
+      const payload = { fields };
+      const response = await this.post(endpoint, payload);
+      Logger.info(`新增记录成功，record_id: ${response.record?.record_id}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '新增多维表格记录失败');
+    }
+  }
+
+  /**
+   * 批量新增记录到多维表格
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   * @param recordsList 记录字段数组，每项为一条记录的字段键值对
+   */
+  public async createBitableRecordsBatch(
+    appTokenOrUrl: string,
+    tableId: string,
+    recordsList: Array<Record<string, any>>
+  ): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`;
+      const payload = { records: recordsList.map(fields => ({ fields })) };
+      const response = await this.post(endpoint, payload);
+      Logger.info(`批量新增记录成功，数量: ${recordsList.length}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '批量新增多维表格记录失败');
+    }
+  }
+
+  /**
+   * 更新多维表格中的单条记录
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   * @param recordId 记录 ID
+   * @param fields 要更新的字段键值对
+   */
+  public async updateBitableRecord(
+    appTokenOrUrl: string,
+    tableId: string,
+    recordId: string,
+    fields: Record<string, any>
+  ): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`;
+      const payload = { fields };
+      const response = await this.put(endpoint, payload);
+      Logger.info(`更新记录成功，record_id: ${recordId}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '更新多维表格记录失败');
+    }
+  }
+
+  /**
+   * 删除多维表格中的单条记录
+   * @param appTokenOrUrl 多维表格 app_token 或 URL
+   * @param tableId 数据表 ID
+   * @param recordId 记录 ID
+   */
+  public async deleteBitableRecord(
+    appTokenOrUrl: string,
+    tableId: string,
+    recordId: string
+  ): Promise<any> {
+    try {
+      const appToken = this.normalizeBitableAppToken(appTokenOrUrl);
+      const endpoint = `/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`;
+      const response = await this.delete(endpoint);
+      Logger.info(`删除记录成功，record_id: ${recordId}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '删除多维表格记录失败');
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // 电子表格（Sheets）API
+  // ─────────────────────────────────────────────
+
+  /**
+   * 将云盘文件移至废纸篓（删除）
+   * @param fileToken 文件token
+   * @param fileType 文件类型：doc/docx/sheet/bitable/mindnote/file/wiki/folder
+   * @returns 操作结果
+   */
+  public async trashDriveFile(fileToken: string, fileType: string): Promise<any> {
+    try {
+      // type 作为 query 参数传入，响应 data 为空对象 {} 属于正常
+      const endpoint = `/drive/v1/files/${fileToken}?type=${fileType}`;
+      const response = await this.delete(endpoint);
+      Logger.info(`文件移至废纸篓成功，token: ${fileToken}`);
+      return response ?? {};
+    } catch (error: any) {
+      // 飞书删除接口成功时 data 为空对象，baseService 可能将其误判为错误，此处做兼容
+      if (error?.apiError?.code === 0 || error?.status === 200) {
+        Logger.info(`文件移至废纸篓成功（兼容空响应），token: ${fileToken}`);
+        return {};
+      }
+      this.handleApiError(error, '删除文件失败');
+    }
+  }
+
+  /**
+   * 创建电子表格
+   * @param title 表格标题
+   * @param folderToken 存放的文件夹token（可选，不填则放在根目录）
+   * @returns 创建结果，包含 spreadsheet_token 和 url
+   */
+  public async createSpreadsheet(title: string, folderToken?: string): Promise<any> {
+    try {
+      const endpoint = '/sheets/v3/spreadsheets';
+      const payload: any = { title };
+      if (folderToken) payload.folder_token = folderToken;
+      const response = await this.post(endpoint, payload);
+      Logger.info(`创建电子表格成功，标题: ${title}，token: ${response?.spreadsheet?.spreadsheet_token}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '创建电子表格失败');
+    }
+  }
+
+  /**
+   * 从电子表格URL或token中提取spreadsheetToken
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @returns 规范化的spreadsheetToken
+   */
+  private normalizeSpreadsheetToken(spreadsheetTokenOrUrl: string): string {
+    if (!spreadsheetTokenOrUrl) {
+      throw new Error('电子表格Token不能为空');
+    }
+    // 支持从URL中提取: https://xxx.feishu.cn/sheets/shtXXXXX
+    const urlMatch = spreadsheetTokenOrUrl.match(/\/sheets\/([a-zA-Z0-9]+)/);
+    if (urlMatch) {
+      return urlMatch[1];
+    }
+    return spreadsheetTokenOrUrl.trim();
+  }
+
+  /**
+   * 获取电子表格元数据（标题、sheets列表等）
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @returns 电子表格元数据
+   */
+  public async getSpreadsheetInfo(spreadsheetTokenOrUrl: string): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v3/spreadsheets/${token}`;
+      const response = await this.get(endpoint);
+      Logger.info(`获取电子表格元数据成功，token: ${token}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '获取电子表格元数据失败');
+    }
+  }
+
+  /**
+   * 获取电子表格所有工作表（sheet）信息
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @returns 工作表列表
+   */
+  public async getSpreadsheetSheets(spreadsheetTokenOrUrl: string): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v3/spreadsheets/${token}/sheets/query`;
+      const response = await this.get(endpoint);
+      Logger.info(`获取工作表列表成功，token: ${token}，数量: ${response.sheets?.length ?? 0}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '获取工作表列表失败');
+    }
+  }
+
+  /**
+   * 读取电子表格指定范围的数据
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param range 单元格范围，如 "Sheet1!A1:D10" 或 "A1:D10"
+   * @param valueRenderOption 单元格值渲染方式，默认 ToString
+   * @param dateTimeRenderOption 日期时间渲染方式，默认 FormattedString
+   * @returns 范围内的数据
+   */
+  public async getSpreadsheetValues(
+    spreadsheetTokenOrUrl: string,
+    range: string,
+    valueRenderOption: string = 'ToString',
+    dateTimeRenderOption: string = 'FormattedString'
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const encodedRange = encodeURIComponent(range);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values/${encodedRange}`;
+      const params: any = {
+        valueRenderOption,
+        dateTimeRenderOption,
+      };
+      const response = await this.get(endpoint, params);
+      Logger.info(`读取电子表格数据成功，token: ${token}，范围: ${range}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '读取电子表格数据失败');
+    }
+  }
+
+  /**
+   * 批量读取电子表格多个范围的数据
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param ranges 多个单元格范围数组
+   * @param valueRenderOption 单元格值渲染方式，默认 ToString
+   * @param dateTimeRenderOption 日期时间渲染方式，默认 FormattedString
+   * @returns 多个范围的数据
+   */
+  public async getSpreadsheetValuesBatch(
+    spreadsheetTokenOrUrl: string,
+    ranges: string[],
+    valueRenderOption: string = 'ToString',
+    dateTimeRenderOption: string = 'FormattedString'
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values_batch_get`;
+      const params: any = {
+        ranges: ranges.join(','),
+        valueRenderOption,
+        dateTimeRenderOption,
+      };
+      const response = await this.get(endpoint, params);
+      Logger.info(`批量读取电子表格数据成功，token: ${token}，范围数量: ${ranges.length}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '批量读取电子表格数据失败');
+    }
+  }
+
+  /**
+   * 向电子表格指定范围写入数据（覆盖写入）
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param range 单元格范围，如 "Sheet1!A1:D3"
+   * @param values 二维数组，行×列，每个元素为单元格值
+   * @returns 写入结果
+   */
+  public async setSpreadsheetValues(
+    spreadsheetTokenOrUrl: string,
+    range: string,
+    values: any[][]
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values`;
+      const payload = {
+        valueRange: {
+          range,
+          values,
+        },
+      };
+      const response = await this.put(endpoint, payload);
+      Logger.info(`写入电子表格数据成功，token: ${token}，范围: ${range}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '写入电子表格数据失败');
+    }
+  }
+
+  /**
+   * 向电子表格指定范围追加数据（在已有数据末尾追加行）
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param range 单元格范围，如 "Sheet1!A1:D1"（以该范围所在列为基准追加）
+   * @param values 二维数组，行×列
+   * @returns 追加结果
+   */
+  public async appendSpreadsheetValues(
+    spreadsheetTokenOrUrl: string,
+    range: string,
+    values: any[][]
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values_append`;
+      const payload = {
+        valueRange: {
+          range,
+          values,
+        },
+      };
+      // append 接口为 POST，且 range 需在 query string
+      const response = await this.post(`${endpoint}?insertDataOption=INSERT_ROWS`, payload);
+      Logger.info(`追加电子表格数据成功，token: ${token}，范围: ${range}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '追加电子表格数据失败');
+    }
+  }
+
+  /**
+   * 批量写入电子表格多个范围的数据
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param valueRanges 多个 {range, values} 对象数组
+   * @returns 写入结果
+   */
+  public async setSpreadsheetValuesBatch(
+    spreadsheetTokenOrUrl: string,
+    valueRanges: Array<{ range: string; values: any[][] }>
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values_batch_update`;
+      const payload = {
+        valueRanges,
+      };
+      const response = await this.post(endpoint, payload);
+      Logger.info(`批量写入电子表格数据成功，token: ${token}，批次数: ${valueRanges.length}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '批量写入电子表格数据失败');
+    }
+  }
+
+  /**
+   * 清空电子表格指定范围的数据
+   * @param spreadsheetTokenOrUrl 电子表格token或URL
+   * @param ranges 要清空的范围数组
+   * @returns 清空结果
+   */
+  public async clearSpreadsheetValues(
+    spreadsheetTokenOrUrl: string,
+    ranges: string[]
+  ): Promise<any> {
+    try {
+      const token = this.normalizeSpreadsheetToken(spreadsheetTokenOrUrl);
+      const endpoint = `/sheets/v2/spreadsheets/${token}/values_batch_clear`;
+      const payload = { ranges };
+      const response = await this.post(endpoint, payload);
+      Logger.info(`清空电子表格数据成功，token: ${token}，范围数量: ${ranges.length}`);
+      return response;
+    } catch (error) {
+      this.handleApiError(error, '清空电子表格数据失败');
+    }
+  }
+
   /**
    * 从路径或URL获取图片的Base64编码
    * @param imagePathOrUrl 图片路径或URL

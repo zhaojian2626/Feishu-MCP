@@ -82,6 +82,9 @@ export function registerFeishuFolderTools(server: McpServer, feishuService: Feis
     },
   );
 
+  // 删除文件工具暂时屏蔽，风险较高，如需启用请取消注释
+  // server.tool('trash_feishu_file', ...)
+
   // 添加创建文件夹工具
   server.tool(
     'create_feishu_folder',

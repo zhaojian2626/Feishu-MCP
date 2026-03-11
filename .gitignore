@@ -35,3 +35,8 @@ coverage
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime cache (auto-generated, do not commit)
+tenant_token_cache.json
+user_token_cache.json
+scope_version_cache.json
